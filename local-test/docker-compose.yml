@@ -1,0 +1,21 @@
+# Local test of the routing loop without k3d. Fake backends just say REAL / DECOY.
+services:
+  redis:
+    image: redis:7.2-alpine
+  grafana:
+    image: hashicorp/http-echo:1.0
+    command: ["-listen=:3000", "-text=REAL"]
+  grafana-decoy:
+    image: hashicorp/http-echo:1.0
+    command: ["-listen=:3000", "-text=DECOY"]
+  proxy:
+    image: openresty/openresty:1.25.3.2-alpine
+    environment: { REDIS_HOST: redis, REDIS_PORT: "6379" }
+    volumes: ["../nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro"]
+    depends_on: [redis, grafana, grafana-decoy]
+  attacker:
+    image: curlimages/curl:8.10.1
+    command: ["sleep", "infinity"]
+  user:
+    image: curlimages/curl:8.10.1
+    command: ["sleep", "infinity"]

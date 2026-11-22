@@ -1,0 +1,42 @@
+# Proxy for k3d. Namespaces as proposed in ROUTING-RULE.md (net, app, decoy): confirm with Sohaib and Tarek.
+# Create the config first:
+#   kubectl -n net create configmap proxy-conf --from-file=nginx.conf=../nginx.conf
+apiVersion: v1
+kind: Service            # alias so nginx.conf can keep the short name "grafana"
+metadata: { name: grafana, namespace: net }
+spec: { type: ExternalName, externalName: grafana.app.svc.cluster.local }
+---
+apiVersion: v1
+kind: Service            # alias so nginx.conf can keep the short name "grafana-decoy"
+metadata: { name: grafana-decoy, namespace: net }
+spec: { type: ExternalName, externalName: grafana-decoy.decoy.svc.cluster.local }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: proxy, namespace: net }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: proxy } }
+  template:
+    metadata: { labels: { app: proxy } }
+    spec:
+      containers:
+        - name: openresty
+          image: openresty/openresty:1.25.3.2-alpine
+          env:
+            - { name: REDIS_HOST, value: redis.net.svc.cluster.local }   # FQDN: Lua resolver ignores search domains
+            - { name: REDIS_PORT, value: "6379" }
+          ports: [{ containerPort: 8080 }]
+          readinessProbe: { httpGet: { path: /healthz, port: 8080 } }
+          volumeMounts:
+            - { name: conf, mountPath: /usr/local/openresty/nginx/conf/nginx.conf, subPath: nginx.conf }
+      volumes:
+        - name: conf
+          configMap: { name: proxy-conf }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: proxy, namespace: net }
+spec:
+  selector: { app: proxy }
+  ports: [{ port: 80, targetPort: 8080 }]
